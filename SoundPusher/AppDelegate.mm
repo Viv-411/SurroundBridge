@@ -510,7 +510,7 @@ static void AttemptToStartMissingChains(CAHelper::DefaultDeviceChanger *defaultD
 
 - (IBAction)openHomepage:(id)sender
 {
-  [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://github.com/q-p/SoundPusher"]];
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://codeberg.org/q-p/SoundPusher"]];
 }
 
 - (void) receiveSleepNote: (NSNotification*) note

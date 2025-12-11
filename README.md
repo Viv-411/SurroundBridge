@@ -10,7 +10,7 @@ It requires a compatible audio device capable of outputting compressed `AC3` aud
 ## Usage
 There are two components required to make this work:
 
-1. `SoundPusherAudio` — A user-space (sand-boxed) CoreAudio driver (aka `AudioServerPlugin`) that provides a 5.1 channel output stream whose contents can then be captured. `SoundPusherAudio.driver` must be installed (copied) into the `/Library/Audio/Plug-Ins/HAL` directory. This driver was previously called `Loopback Audio` and you may have to remove the old version (called `LoopbackAudio.driver`) manually. Note that if this device provides audio inputs, you may have to allow microphone access in addition to system audio recording permission. Older versions of this driver used to mirror the output it receives back to its (virtual) microphone input. The last release that included this loopback functionality was [v1.4.2](https://github.com/q-p/SoundPusher/releases/tag/v1.4.2). Feel free to use that version of the driver, but I'd recommend you look at [Rogue Amoeba's Loopback](https://rogueamoeba.com/loopback/) since I'm not interested in supporting that use case.
+1. `SoundPusherAudio` — A user-space (sand-boxed) CoreAudio driver (aka `AudioServerPlugin`) that provides a 5.1 channel output stream whose contents can then be captured. `SoundPusherAudio.driver` must be installed (copied) into the `/Library/Audio/Plug-Ins/HAL` directory. This driver was previously called `Loopback Audio` and you may have to remove the old version (called `LoopbackAudio.driver`) manually. Note that if this device provides audio inputs, you may have to allow microphone access in addition to system audio recording permission. Older versions of this driver used to mirror the output it receives back to its (virtual) microphone input. The last release that included this loopback functionality was [v1.4.2](https://codeberg.org/q-p/SoundPusher/releases/tag/v1.4.2). Feel free to use that version of the driver, but I'd recommend you look at [Rogue Amoeba's Loopback](https://rogueamoeba.com/loopback/) since I'm not interested in supporting that use case.
 2. `SoundPusher` — An application that continuously reads audio from `SoundPusher Audio` (or any other suitable) device, encodes it into a compressed format, and then sends that compressed stream to a (hopefully) real sound device's digital output stream. This is controlled through its menu bar extra.
 
 Once the driver is installed and `SoundPusher` running, you should be able to select the desired combination of supported source and digital output devices (which will forward any sound output from the source device to the designated digital output). `SoundPusher` will set the default output device to the selected source device (e.g. `SoundPusher Audio`) and restore the default device on exit.
@@ -22,7 +22,7 @@ You can override the default IOCycle timing adjustment (which attempts to postpo
 You can also switch back to the old rear channel upmixing with `defaults write de.maven.SoundPusher UpmixDPLiiRear -bool NO`.
 
 ## Contact & Support
-Please report any issues on [GitHub](https://github.com/q-p/SoundPusher).
+Please report any issues on [Codeberg](https://codeberg.org/q-p/SoundPusher).
 
 ## Dependencies
 ### FFmpeg — libavcodec, libavformat, libswresample
