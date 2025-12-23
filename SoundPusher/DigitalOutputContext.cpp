@@ -158,6 +158,11 @@ OSStatus DigitalOutputContext::DeviceIOProcFunc(AudioObjectID inDevice, const Au
 {
   DigitalOutputContext *me = static_cast<DigitalOutputContext *>(inClientData);
   assert(outOutputData->mNumberBuffers == 1);
+  if (outOutputData->mBuffers[0].mDataByteSize < me->_format.mBytesPerPacket)
+  { // this can happen during start-up / initialization, so just emit the (prefilled) zeros
+    os_log_info(me->_log, "Output buffer size (%u) too small for packet size (%u)", outOutputData->mBuffers[0].mDataByteSize, me->_format.mBytesPerPacket);
+    return noErr;
+  }
   assert(outOutputData->mBuffers[0].mDataByteSize >= me->_format.mBytesPerPacket);
 
   const auto numInputFramesRequired = me->GetNumFramesPerPacket(); // or derive from output buffer size
