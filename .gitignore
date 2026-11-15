@@ -1,0 +1,6 @@
+deps/
+build/
+DerivedData/
+*.mkv
+.DS_Store
+xcuserdata/
