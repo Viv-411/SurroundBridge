@@ -29,7 +29,7 @@ struct BassTab: View {
                     }
                 }
                 .disabled(!model.state.bassEnabled)
-                Text("Sounds below the crossover are removed from the chosen speakers and played by the subwoofer instead, so small speakers don't have to struggle with bass. The default level of −10 dB matches how Dolby Digital decoders boost the subwoofer channel by 10 dB. Dolby Digital limits the subwoofer channel to about 120 Hz, and your Sony may already do its own bass management, so start around 80 Hz.")
+                Text("Sounds below the crossover are removed from the chosen speakers and played by the subwoofer instead, so small speakers don't have to struggle with bass. Stereo sources such as music have no subwoofer channel of their own, so this is what gives the subwoofer a real signal. The default level of −10 dB matches how Dolby Digital decoders boost the subwoofer channel by 10 dB. Dolby Digital limits the subwoofer channel to about 120 Hz, and your Sony may already do its own bass management, so 80–120 Hz is a good range.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

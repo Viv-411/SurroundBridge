@@ -95,8 +95,9 @@ struct BridgeState: Codable, Equatable {
     var routing = RoutingPreset.direct.matrix
     var channels = [ChannelState](repeating: ChannelState(), count: Speaker.allCases.count)
 
-    var bassEnabled = false
-    var crossoverHz = 80.0
+    /// On by default: stereo sources (music) have no subwoofer channel, so without this the sub channel stays empty.
+    var bassEnabled = true
+    var crossoverHz = 100.0
     var bassFrom = Speaker.allCases.map { $0 != .sub }
     var bassRedirectDb = -10.0
 
@@ -148,8 +149,19 @@ struct RoutingPreset: Identifiable {
     let name: String
     let summary: String
     let matrix: [[Double]]
+    /// Some modes also shape the tone of the center speaker (nil = leave the center's equaliser flat).
+    var centerEQ: [EQBand]? = nil
 
     var id: String { name }
+
+    /// Center EQ that favours the vocal range: cuts deep bass and the very top, and lifts the "presence" region.
+    static let vocalFocusEQ: [EQBand] = [
+        EQBand(type: .highPass, enabled: true, freq: 150, q: 0.71),
+        EQBand(type: .peak, freq: 250, q: 1),
+        EQBand(type: .peak, enabled: true, freq: 2000, gainDb: 3, q: 0.8),
+        EQBand(type: .peak, freq: 4000, q: 1),
+        EQBand(type: .lowPass, enabled: true, freq: 7000, q: 0.71),
+    ]
 
     private static func build(_ routes: [(Speaker, Speaker, Double)]) -> [[Double]] {
         var m = [[Double]](repeating: [Double](repeating: 0, count: 6), count: 6)
@@ -166,8 +178,18 @@ struct RoutingPreset: Identifiable {
         summary: "Every channel goes to its own speaker, untouched. Stereo sources play from the front pair only.",
         matrix: build(straight))
 
+    static let music = RoutingPreset(
+        name: "Music",
+        summary: "For stereo music: left and right also play from the surrounds behind you, and the center plays a blend of both that is filtered to favour voices. Sound comes from all around the room.",
+        matrix: build(straight + [
+            (.surroundLeft, .frontLeft, minus3dB), (.surroundRight, .frontRight, minus3dB),
+            (.center, .frontLeft, half), (.center, .frontRight, half),
+        ]),
+        centerEQ: vocalFocusEQ)
+
     static let all: [RoutingPreset] = [
         direct,
+        music,
         RoutingPreset(
             name: "All Channel Stereo",
             summary: "Left also plays from the left surround, right from the right surround, and the center gets a mix of both. Fills the room with stereo music.",
@@ -259,11 +281,40 @@ final class BridgeModel {
         } else {
             state = BridgeState()
         }
+        // One-time update for settings saved before bass management became the default.
+        let migrationKey = "DidEnableBassManagementByDefault"
+        if !UserDefaults.standard.bool(forKey: migrationKey) {
+            state.bassEnabled = true
+            state.crossoverHz = 100
+            UserDefaults.standard.set(true, forKey: migrationKey)
+            scheduleSave()
+        }
         pushToEngine()
         refreshPresets()
     }
 
     var sampleRate: Double { sb_engine_sample_rate(sb_shared_engine()) }
+
+    // MARK: sound modes
+
+    func isActive(_ preset: RoutingPreset) -> Bool {
+        guard state.routing == preset.matrix else { return false }
+        return preset.centerEQ == nil || state.channels[Speaker.center.rawValue].eq == preset.centerEQ
+    }
+
+    /// Switches to a sound mode: sets the routing, and the center speaker's EQ if the mode has one.
+    func apply(_ preset: RoutingPreset) {
+        var new = state
+        new.routing = preset.matrix
+        let center = Speaker.center.rawValue
+        if let eq = preset.centerEQ {
+            new.channels[center].eq = eq
+        } else if RoutingPreset.all.contains(where: { $0.centerEQ == new.channels[center].eq }) {
+            // leaving a mode that had shaped the center: put its equaliser back to flat
+            new.channels[center].eq = EQBand.defaults
+        }
+        state = new
+    }
 
     private func pushToEngine() {
         var params = state.makeParams(tone: toneSpeaker, toneType: toneType, toneLevelDb: toneLevelDb)

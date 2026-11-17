@@ -17,7 +17,7 @@ normal audio you get loud static.
 
 ## Features
 - Routing matrix (any source channel → any speaker, with level and phase), plus receiver-style sound
-  modes: Direct 5.1, All Channel Stereo, Matrix Surround, Stereo 2.0 / 2.1, Front Stage 3.1,
+  modes: Direct 5.1, Music, All Channel Stereo, Matrix Surround, Stereo 2.0 / 2.1, Front Stage 3.1,
   Phantom Center, 5-Channel Mono
 - Per speaker: volume, mute, solo, delay and a 5-band parametric EQ with a draggable curve
 - Bass management: adjustable crossover that moves low frequencies to the subwoofer

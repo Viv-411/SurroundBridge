@@ -17,7 +17,7 @@ struct RoutingTab: View {
     }
 
     private var activePreset: RoutingPreset? {
-        RoutingPreset.all.first { $0.matrix == model.state.routing }
+        RoutingPreset.all.first { model.isActive($0) }
     }
 
     var body: some View {
@@ -26,9 +26,9 @@ struct RoutingTab: View {
             Card(title: "Sound Mode") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
                     ForEach(RoutingPreset.all) { preset in
-                        let isActive = preset.matrix == model.state.routing
+                        let isActive = model.isActive(preset)
                         Button {
-                            model.state.routing = preset.matrix
+                            model.apply(preset)
                         } label: {
                             Text(preset.name)
                                 .frame(maxWidth: .infinity)
