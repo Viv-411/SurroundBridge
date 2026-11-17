@@ -17,9 +17,13 @@ normal audio you get loud static.
 
 ## Features
 - Routing matrix (any source channel → any speaker, with level and phase), plus receiver-style sound
-  modes: Direct 5.1, Music, All Channel Stereo, Matrix Surround, Stereo 2.0 / 2.1, Front Stage 3.1,
+  modes: Direct 5.1, All Channel Stereo, Matrix Surround, Stereo 2.0 / 2.1, Front Stage 3.1,
   Phantom Center, 5-Channel Mono
 - Per speaker: volume, mute, solo, delay and a 5-band parametric EQ with a draggable curve
+- An "All speakers" (master) EQ on top, and ready-made EQ presets
+- Room & Position: draw your room, drag "You" to your seat, and the app balances each speaker's volume
+  and timing for that spot. Save spots (Desk, Bed, ...) and switch from the menu bar
+- Every slider has a number box you can type into
 - Bass management: adjustable crossover that moves low frequencies to the subwoofer
 - Safety limiter so nothing clips
 - Test signal on one speaker at a time, or walking around the room

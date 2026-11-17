@@ -210,6 +210,17 @@ final class SurroundCoreTests: XCTestCase {
         }
     }
 
+    func testMasterEQAppliesToEverySpeakerAndStacksWithChannelEQ() {
+        var p = defaultParams()
+        sb_params_master_band(&p, 2).pointee = SBEQBand(type: Int32(SB_FILTER_PEAK), enabled: true, freqHz: 1000, gainDb: 6, q: 1)
+        // front left additionally has its own -4 dB at the same spot: the two should simply add up to +2 dB
+        sb_channel_band(sb_params_channel(&p, 0), 2).pointee = SBEQBand(type: Int32(SB_FILTER_PEAK), enabled: true, freqHz: 1000, gainDb: -4, q: 1)
+        let output = run(p, input: sine(freq: 1000, amplitude: 0.1, on: [0, 1, 2, 3, 4, 5], frames: 48000))
+        let reference = db(0.1) - 3.01
+        XCTAssertEqual(db(settledRMS(channel(0, of: output))) - reference, 2, accuracy: 0.1)
+        for c in 1..<6 { XCTAssertEqual(db(settledRMS(channel(c, of: output))) - reference, 6, accuracy: 0.1) }
+    }
+
     // MARK: bass management
 
     func testBassManagementMovesLowsToSubwoofer() {

@@ -19,6 +19,8 @@ namespace {
 
 constexpr int NC = SB_NUM_CHANNELS;
 constexpr int NB = SB_NUM_EQ_BANDS;
+/// Each speaker runs its own bands followed by the master bands, as one chain of filters.
+constexpr int kEqSections = 2 * NB;
 /// Largest block processed in one go; bigger requests are split up. (AC-3 packets are 1536 frames.)
 constexpr uint32_t kMaxBlock = 4096;
 /// Length of each delay line. A power of two so wrapping around is a cheap bit-mask. Covers 200 ms up to 96 kHz.
@@ -41,7 +43,7 @@ struct RTParams
   float toneGain[NC];    ///< like channelGain but ignoring mute/solo (a test tone should always be audible)
   uint32_t delaySamples[NC];
   bool eqActive[NC];
-  double eqCoeffs[NC][NB * 5];
+  double eqCoeffs[NC][kEqSections * 5];
 
   bool bassEnabled;
   bool bassFrom[NC];
@@ -130,7 +132,8 @@ RTParams DeriveRTParams(const SBParams &p, double sampleRate)
     for (int b = 0; b < NB; ++b)
     {
       sb_biquad_design(&ch.eq[b], sampleRate, &rt.eqCoeffs[o][b * 5]);
-      rt.eqActive[o] = rt.eqActive[o] || ch.eq[b].enabled;
+      sb_biquad_design(&p.masterEq[b], sampleRate, &rt.eqCoeffs[o][(NB + b) * 5]);
+      rt.eqActive[o] = rt.eqActive[o] || ch.eq[b].enabled || p.masterEq[b].enabled;
     }
   }
 
@@ -197,7 +200,7 @@ private:
   float _currentGain[NC];
 
   vDSP_biquad_Setup _eqSetup[NC];
-  float _eqState[NC][2 * NB + 2];
+  float _eqState[NC][2 * kEqSections + 2];
   vDSP_biquad_Setup _highpassSetup[NC];
   float _highpassState[NC][2 * kBassSections + 2];
   vDSP_biquad_Setup _lowpassSetup;
@@ -233,7 +236,7 @@ SBEngine::SBEngine(double sampleRate) : _sampleRate(sampleRate)
   {
     inputPeak[c].store(0.0f);
     outputPeak[c].store(0.0f);
-    _eqSetup[c] = vDSP_biquad_CreateSetup(_rt.eqCoeffs[c], NB);
+    _eqSetup[c] = vDSP_biquad_CreateSetup(_rt.eqCoeffs[c], kEqSections);
     _highpassSetup[c] = vDSP_biquad_CreateSetup(_rt.highpass, kBassSections);
     _currentGain[c] = _rt.channelGain[c];
     for (int i = 0; i < NC; ++i)
@@ -293,7 +296,7 @@ void SBEngine::ApplyNewParams(const RTParams &newParams)
 
   for (int c = 0; c < NC; ++c)
   {
-    vDSP_biquad_SetCoefficientsDouble(_eqSetup[c], _rt.eqCoeffs[c], 0, NB);
+    vDSP_biquad_SetCoefficientsDouble(_eqSetup[c], _rt.eqCoeffs[c], 0, kEqSections);
     vDSP_biquad_SetCoefficientsDouble(_highpassSetup[c], _rt.highpass, 0, kBassSections);
     if (_rt.eqActive[c] && !eqWasActive[c])
       std::memset(_eqState[c], 0, sizeof _eqState[c]); // start a freshly enabled filter from silence
@@ -557,6 +560,8 @@ void sb_params_init_default(SBParams *params)
       band.q = band.type == SB_FILTER_PEAK ? 1.0f : 0.7071f;
     }
   }
+  for (int b = 0; b < NB; ++b)
+    params->masterEq[b] = params->channels[0].eq[b];
   params->bassEnabled = false;
   params->crossoverHz = 80.0f;
   params->bassRedirectGainDb = -10.0f;
@@ -590,6 +595,11 @@ SBChannelParams *sb_params_channel(SBParams *params, int32_t channel)
 SBEQBand *sb_channel_band(SBChannelParams *channel, int32_t band)
 {
   return &channel->eq[(band >= 0 && band < NB) ? band : 0];
+}
+
+SBEQBand *sb_params_master_band(SBParams *params, int32_t band)
+{
+  return &params->masterEq[(band >= 0 && band < NB) ? band : 0];
 }
 
 void sb_params_set_bass_from(SBParams *params, int32_t channel, bool enabled)

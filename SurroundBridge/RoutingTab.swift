@@ -23,33 +23,20 @@ struct RoutingTab: View {
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 14) {
-            Card(title: "Sound Mode") {
+            Card(title: "Sound mode") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
                     ForEach(RoutingPreset.all) { preset in
-                        let isActive = model.isActive(preset)
-                        Button {
-                            model.apply(preset)
-                        } label: {
-                            Text(preset.name)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 7)
-                                .background(isActive ? Color.accentColor : Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 7))
-                                .foregroundStyle(isActive ? .white : .primary)
-                        }
-                        .buttonStyle(.plain)
-                        .help(preset.summary)
-                        .accessibilityAddTraits(isActive ? .isSelected : [])
+                        ChoiceButton(title: preset.name, isSelected: model.isActive(preset)) { model.apply(preset) }
+                            .help(preset.summary)
                     }
                 }
-                Text(activePreset?.summary ?? "Custom routing — edited by hand in the grid below.")
-                    .font(.callout).foregroundStyle(.secondary)
+                Text(activePreset?.summary ?? "Custom routing, edited by hand in the grid below.")
+                    .font(.callout).foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Card(title: "Routing Grid") {
-                Text("Columns are what the Mac is playing (the source channels). Rows are your speakers. Click a square to connect or disconnect; select one to fine-tune it.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            Card(title: "Routing grid") {
+                Hint("Columns are what the Mac is playing (the source channels). Rows are your speakers. Click a square to connect it and select it; click it again to disconnect. The number is its level in dB.")
 
                 Grid(horizontalSpacing: 6, verticalSpacing: 6) {
                     GridRow {
@@ -57,7 +44,7 @@ struct RoutingTab: View {
                         ForEach(Speaker.allCases) { source in
                             VStack(spacing: 0) {
                                 Text(source.short).font(.caption.bold())
-                                Text("source").font(.system(size: 9)).foregroundStyle(.secondary)
+                                Text("source").font(.system(size: 9)).foregroundStyle(Theme.dim)
                             }
                         }
                     }
@@ -102,9 +89,9 @@ struct RoutingTab: View {
             }
         } label: {
             RoundedRectangle(cornerRadius: 6)
-                .fill(isOn ? Color.accentColor.opacity(0.25 + 0.6 * min(abs(gain), 1)) : Color.secondary.opacity(0.1))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(isSelected ? Color.primary : .clear, lineWidth: 2))
-                .overlay(Text(label).font(.caption.monospacedDigit()).foregroundStyle(.white))
+                .fill(isOn ? Theme.signal.opacity(0.3 + 0.7 * min(abs(gain), 1)) : Theme.raised.opacity(0.6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(isSelected ? Theme.text : .clear, lineWidth: 2))
+                .overlay(Text(label).font(.caption.monospacedDigit().weight(.semibold)).foregroundStyle(Theme.chassis))
                 .frame(width: 54, height: 34)
         }
         .buttonStyle(.plain)
@@ -136,7 +123,7 @@ private struct CellEditor: View {
                     .disabled(gain == 0)
                     .help("Turns the waveform upside down. Used for difference signals like Matrix Surround.")
             }
-            LabeledSlider(title: "Level", value: levelDb, range: -30...6, titleWidth: 50, format: formatDb)
+            LabeledSlider(title: "Level", value: levelDb, range: -30...6, titleWidth: 50)
                 .disabled(gain == 0)
         }
     }

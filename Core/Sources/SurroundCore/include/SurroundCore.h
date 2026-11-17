@@ -80,6 +80,7 @@ typedef struct SBParams {
   /// routing[out][in] is the linear gain from input channel `in` to output channel `out` (may be negative to flip phase).
   float routing[SB_NUM_CHANNELS][SB_NUM_CHANNELS];
   SBChannelParams channels[SB_NUM_CHANNELS];
+  SBEQBand masterEq[SB_NUM_EQ_BANDS];   ///< equaliser applied to every speaker, on top of each speaker's own
 
   bool bassEnabled;                      ///< bass management on/off
   float crossoverHz;
@@ -102,6 +103,7 @@ void sb_params_set_route(SBParams *params, int32_t outChannel, int32_t inChannel
 float sb_params_get_route(const SBParams *params, int32_t outChannel, int32_t inChannel);
 SBChannelParams *sb_params_channel(SBParams *params, int32_t channel);
 SBEQBand *sb_channel_band(SBChannelParams *channel, int32_t band);
+SBEQBand *sb_params_master_band(SBParams *params, int32_t band);
 void sb_params_set_bass_from(SBParams *params, int32_t channel, bool enabled);
 
 // ---- engine ----

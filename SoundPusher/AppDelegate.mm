@@ -566,8 +566,13 @@ static void AttemptToStartMissingChains(CAHelper::DefaultDeviceChanger *defaultD
     }
   }
 
+  // SurroundBridge developer aid: a "-SBSnapshot <tab>" launch only draws the window to a picture and quits.
+  // It must not touch audio at all, so it can run next to a copy of the app that is playing.
+  const bool isSnapshotRun = [[NSUserDefaults standardUserDefaults] stringForKey:@"SBSnapshot"] != nil;
+
   // if our plugin is present, let's acquire the box (i.e. make the device show up)
-  _deviceBoxAcquirer.emplace(CFSTR(kBox_UID));
+  if (!isSnapshotRun)
+    _deviceBoxAcquirer.emplace(CFSTR(kBox_UID));
 
   // SurroundBridge: add our own menu items, and hide SoundPusher's built-in stereo upmix (our routing matrix replaces it)
   _upmixMenuItem.hidden = YES;
@@ -600,7 +605,11 @@ static void AttemptToStartMissingChains(CAHelper::DefaultDeviceChanger *defaultD
     name:NSWorkspaceDidWakeNotification object:NULL];
 
   [[SBAppController shared] showWindow];
-  [[SBAppController shared] saveSnapshotIfRequested];
+  if (isSnapshotRun)
+  {
+    [[SBAppController shared] saveSnapshotIfRequested];
+    return;
+  }
 
   // our acquiring of the box with our device may have posted some messages, so process those messages first
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)NSEC_PER_SEC / 4), dispatch_get_main_queue(), ^{

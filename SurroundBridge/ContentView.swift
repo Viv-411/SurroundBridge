@@ -2,7 +2,7 @@
 //  ContentView.swift
 //  SurroundBridge
 //
-//  The main window: header bar on top, speaker layout on the left, tabs on the right.
+//  The main window: header bar on top, the room on the left, tabs on the right.
 //
 
 import SwiftUI
@@ -11,62 +11,96 @@ struct ContentView: View {
     @Environment(BridgeModel.self) private var model
     @State private var tab: Tab = {
         // normally starts on the first tab; the developer snapshot option can ask for another one
-        switch UserDefaults.standard.string(forKey: "SBSnapshot") {
-        case "routing": .routing
-        case "bass": .bass
-        default: .speakers
-        }
+        Tab(rawValue: UserDefaults.standard.string(forKey: "SBSnapshot") ?? "") ?? .speakers
     }()
 
     enum Tab: String, CaseIterable, Identifiable {
-        case speakers = "Speakers & EQ"
-        case routing = "Routing"
-        case bass = "Bass & Protection"
+        case speakers, routing, bass, room
         var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .speakers: "Speakers & EQ"
+            case .routing: "Routing"
+            case .bass: "Bass & Protection"
+            case .room: "Room & Position"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .speakers: "hifispeaker.2.fill"
+            case .routing: "point.3.connected.trianglepath.dotted"
+            case .bass: "waveform.path.ecg"
+            case .room: "sofa.fill"
+            }
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HeaderBar()
-            Divider()
-            HStack(spacing: 0) {
-                VStack(spacing: 14) {
-                    SpeakerLayoutView()
-                    TestToneControls()
-                    Spacer(minLength: 0)
+            HStack(alignment: .top, spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        SpeakerLayoutView()
+                        PositionCard()
+                        TestToneControls()
+                    }
+                    .padding([.leading, .bottom], 16)
+                    .padding(.trailing, 8)
                 }
-                .padding(16)
-                .frame(width: 330)
-
-                Divider()
+                .frame(width: 372)
 
                 VStack(spacing: 0) {
-                    Picker("Section", selection: $tab) {
-                        ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .padding(12)
-
+                    tabBar
                     ScrollView {
                         Group {
                             switch tab {
                             case .speakers: SpeakersTab()
                             case .routing: RoutingTab()
                             case .bass: BassTab()
+                            case .room: RoomTab()
                             }
                         }
-                        .padding([.horizontal, .bottom], 16)
+                        .padding(.leading, 8)
+                        .padding([.trailing, .bottom], 16)
                     }
                 }
             }
         }
-        .frame(minWidth: 980, minHeight: 640)
-        .opacity(model.state.bypass ? 0.85 : 1)
+        .frame(minWidth: 1060, minHeight: 660)
+        .background(Theme.chassis)
+        .foregroundStyle(Theme.text)
+        .tint(Theme.signal)
+        .fontDesign(.rounded)
+        .preferredColorScheme(.dark)
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 4) {
+            ForEach(Tab.allCases) { item in
+                let isSelected = tab == item
+                Button { tab = item } label: {
+                    Label(item.title, systemImage: item.icon)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(isSelected ? Theme.panel : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        .foregroundStyle(isSelected ? Theme.signal : Theme.dim)
+                        .fontWeight(isSelected ? .semibold : .regular)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+            Spacer()
+        }
+        .padding(.leading, 8)
+        .padding(.bottom, 10)
     }
 }
 
-/// Connection status, presets, master volume and bypass.
+/// Name, connection status, presets, master volume and bypass.
 struct HeaderBar: View {
     @Environment(BridgeModel.self) private var model
     @State private var isNamingPreset = false
@@ -75,13 +109,22 @@ struct HeaderBar: View {
     var body: some View {
         @Bindable var model = model
         HStack(spacing: 14) {
+            HStack(spacing: 8) {
+                SurroundGlyph().frame(width: 30, height: 30)
+                Text("SurroundBridge").font(.title3.weight(.bold))
+            }
+
             Button { AppController.shared.popUpOutputMenu() } label: {
-                HStack(spacing: 6) {
-                    Circle().fill(model.outputName == nil ? Color.orange : Color.green).frame(width: 9, height: 9)
-                    Text(model.outputName.map { "Playing to \($0)" } ?? "Not connected — choose output")
+                HStack(spacing: 7) {
+                    Circle().fill(model.outputName == nil ? Theme.amber : Theme.signal).frame(width: 8, height: 8)
+                    Text(model.outputName.map { "Playing to \($0)" } ?? "Not connected. Choose an output")
                     Image(systemName: "chevron.down").font(.caption2)
                 }
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .background(Theme.panel, in: Capsule())
             }
+            .buttonStyle(.plain)
             .help("Choose which device receives the Dolby Digital signal")
 
             Menu {
@@ -94,7 +137,7 @@ struct HeaderBar: View {
                     }
                 }
                 Divider()
-                Button("Save Current Settings As…") {
+                Button("Save current settings as…") {
                     newPresetName = model.currentPresetName ?? ""
                     isNamingPreset = true
                 }
@@ -103,7 +146,7 @@ struct HeaderBar: View {
                     Button("Delete “\(current)”", role: .destructive) { model.deletePreset(named: current) }
                 }
                 Divider()
-                Button("Reset Everything to Defaults") { model.resetToDefaults() }
+                Button("Reset sound settings to defaults") { model.resetToDefaults() }
             } label: {
                 Label(model.currentPresetName ?? "Presets", systemImage: "slider.horizontal.3")
             }
@@ -112,51 +155,76 @@ struct HeaderBar: View {
             Spacer()
 
             HStack(spacing: 8) {
-                Image(systemName: "speaker.wave.2.fill").foregroundStyle(.secondary)
+                Image(systemName: "speaker.wave.2.fill").foregroundStyle(Theme.dim)
                 Slider(value: $model.state.masterGainDb, in: -40...6)
-                    .frame(width: 170)
+                    .frame(width: 160)
                     .accessibilityLabel("Master volume")
-                Text(formatDb(model.state.masterGainDb))
-                    .monospacedDigit().foregroundStyle(.secondary)
-                    .frame(width: 70, alignment: .trailing)
+                ValueField(value: $model.state.masterGainDb, range: -40...6, unit: "dB", label: "Master volume")
             }
             .help("Master volume for all speakers")
 
             Toggle("Bypass", isOn: $model.state.bypass)
                 .toggleStyle(.switch)
+                .tint(Theme.amber)
                 .help("Pass audio through untouched, to compare with and without processing")
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .alert("Save Preset", isPresented: $isNamingPreset) {
+        .padding(.vertical, 12)
+        .alert("Save preset", isPresented: $isNamingPreset) {
             TextField("Preset name", text: $newPresetName)
             Button("Save") { model.savePreset(named: newPresetName) }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Saves all speaker, EQ, routing and bass settings.")
+            Text("Saves all speaker, EQ, routing and bass settings. Your room and seat are kept separately.")
         }
     }
 }
 
-/// Test signal buttons under the speaker layout.
+/// Quick position controls under the room picture.
+struct PositionCard: View {
+    @Environment(BridgeModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        Card(title: "Where you sit") {
+            Toggle("Adjust speakers for my position", isOn: $model.state.room.compensate)
+                .tint(Theme.amber)
+            if !model.state.room.spots.isEmpty {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 6)], spacing: 6) {
+                    ForEach(model.state.room.spots) { spot in
+                        ChoiceButton(title: spot.name, isSelected: model.currentSpot == spot, tint: Theme.amber) {
+                            model.goToSpot(spot)
+                        }
+                    }
+                }
+            }
+            Hint(model.state.room.spots.isEmpty
+                 ? "Drag the amber marker to your seat. Save spots like Desk or Bed under Room & Position."
+                 : "Drag the amber marker, or pick a saved spot.")
+        }
+    }
+}
+
+/// Test signal buttons.
 struct TestToneControls: View {
     @Environment(BridgeModel.self) private var model
 
     var body: some View {
         @Bindable var model = model
-        Card(title: "Speaker Test") {
+        let isTestingSelected = model.toneSpeaker == model.selected && !model.isCyclingTone
+        Card(title: "Speaker test") {
             HStack {
                 Button {
                     model.toggleTone(on: model.selected)
                 } label: {
-                    Label(model.toneSpeaker == model.selected && !model.isCyclingTone ? "Stop" : "Test \(model.selected.short)",
-                          systemImage: model.toneSpeaker == model.selected && !model.isCyclingTone ? "stop.fill" : "play.fill")
+                    Label(isTestingSelected ? "Stop" : "Test \(model.selected.short)",
+                          systemImage: isTestingSelected ? "stop.fill" : "play.fill")
                         .frame(maxWidth: .infinity)
                 }
                 Button {
                     if model.isCyclingTone { model.stopTone() } else { model.startCycle() }
                 } label: {
-                    Label(model.isCyclingTone ? "Stop" : "Test All", systemImage: model.isCyclingTone ? "stop.fill" : "arrow.triangle.2.circlepath")
+                    Label(model.isCyclingTone ? "Stop" : "Test all", systemImage: model.isCyclingTone ? "stop.fill" : "arrow.triangle.2.circlepath")
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -166,10 +234,8 @@ struct TestToneControls: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            LabeledSlider(title: "Level", value: $model.toneLevelDb, range: -40...(-6), titleWidth: 40, format: formatDb)
-            Text("Other audio is silenced while a test plays. The subwoofer always gets a low hum.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            LabeledSlider(title: "Level", value: $model.toneLevelDb, range: -40...(-6), titleWidth: 40)
+            Hint("Other audio is silenced while a test plays. The subwoofer always gets a low hum.")
         }
     }
 }

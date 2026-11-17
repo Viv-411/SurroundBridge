@@ -16,6 +16,7 @@ final class AppController: NSObject, NSWindowDelegate, NSMenuDelegate {
     private weak var statusMenu: NSMenu?
     private let bypassItem = NSMenuItem(title: "Bypass Processing", action: #selector(toggleBypass), keyEquivalent: "")
     private let presetsMenu = NSMenu(title: "Presets")
+    private let spotsMenu = NSMenu(title: "Listening Position")
 
     private var model: BridgeModel { BridgeModel.shared }
 
@@ -32,9 +33,12 @@ final class AppController: NSObject, NSWindowDelegate, NSMenuDelegate {
         let presets = NSMenuItem(title: "Presets", action: nil, keyEquivalent: "")
         presets.submenu = presetsMenu
         presetsMenu.delegate = self
+        let spots = NSMenuItem(title: "Listening Position", action: nil, keyEquivalent: "")
+        spots.submenu = spotsMenu
+        spotsMenu.delegate = self
 
         // SoundPusher inserts its "source → output" items above whatever is in the menu at launch, so ours go on top here.
-        for (index, item) in [NSMenuItem.separator(), open, bypassItem, presets, NSMenuItem.separator()].enumerated() {
+        for (index, item) in [NSMenuItem.separator(), open, bypassItem, presets, spots, NSMenuItem.separator()].enumerated() {
             menu.insertItem(item, at: index)
         }
 
@@ -55,8 +59,41 @@ final class AppController: NSObject, NSWindowDelegate, NSMenuDelegate {
         if let name = sender.representedObject as? String { model.loadPreset(named: name) }
     }
 
-    /// Rebuilds the Presets submenu each time it opens.
+    @objc private func goToSpotFromMenu(_ sender: NSMenuItem) {
+        if let name = sender.representedObject as? String,
+           let spot = model.state.room.spots.first(where: { $0.name == name }) {
+            model.goToSpot(spot)
+        }
+    }
+
+    @objc private func togglePositionAdjustment() {
+        model.state.room.compensate.toggle()
+    }
+
+    private func rebuildSpotsMenu() {
+        spotsMenu.removeAllItems()
+        let toggle = NSMenuItem(title: "Adjust Speakers for My Position", action: #selector(togglePositionAdjustment), keyEquivalent: "")
+        toggle.target = self
+        toggle.state = model.state.room.compensate ? .on : .off
+        spotsMenu.addItem(toggle)
+        spotsMenu.addItem(.separator())
+        if model.state.room.spots.isEmpty {
+            let empty = NSMenuItem(title: "No saved spots yet", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            spotsMenu.addItem(empty)
+        }
+        for spot in model.state.room.spots {
+            let item = NSMenuItem(title: spot.name, action: #selector(goToSpotFromMenu(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = spot.name
+            item.state = model.currentSpot == spot && model.state.room.compensate ? .on : .off
+            spotsMenu.addItem(item)
+        }
+    }
+
+    /// Rebuilds the Presets and Listening Position submenus each time they open.
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === spotsMenu { rebuildSpotsMenu(); return }
         guard menu === presetsMenu else { return }
         menu.removeAllItems()
         model.refreshPresets()
@@ -95,10 +132,14 @@ final class AppController: NSObject, NSWindowDelegate, NSMenuDelegate {
                 .environment(MeterModel.shared))
             let window = NSWindow(contentViewController: hosting)
             window.title = "SurroundBridge"
+            // match the window frame to the app's own dark navy look
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.titlebarAppearsTransparent = true
+            window.backgroundColor = NSColor(red: 0.086, green: 0.110, blue: 0.157, alpha: 1)
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
             window.delegate = self
-            window.setContentSize(NSSize(width: 1080, height: 720))
+            window.setContentSize(NSSize(width: 1180, height: 800))
             window.center()
             window.setFrameAutosaveName("SurroundBridgeMainWindow")
             self.window = window
@@ -116,6 +157,10 @@ final class AppController: NSObject, NSWindowDelegate, NSMenuDelegate {
     /// so the layout can be checked without screen-recording permission. `<tab>` is speakers, routing or bass.
     @objc func saveSnapshotIfRequested() {
         guard let tab = UserDefaults.standard.string(forKey: "SBSnapshot") else { return }
+        if UserDefaults.standard.bool(forKey: "SBSnapshotDemo") {
+            // show the position feature in the picture without changing any saved settings
+            BridgeModel.shared.loadDemoStateForSnapshot()
+        }
         showWindow()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             guard let view = self?.window?.contentView,
@@ -124,6 +169,7 @@ final class AppController: NSObject, NSWindowDelegate, NSMenuDelegate {
             let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("snapshot-\(tab).png")
             try? rep.representation(using: .png, properties: [:])?.write(to: url)
             NSLog("SurroundBridge snapshot saved to %@", url.path)
+            NSApp.terminate(nil)
         }
     }
 

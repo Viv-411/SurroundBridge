@@ -2,19 +2,10 @@
 //  Controls.swift
 //  SurroundBridge
 //
-//  Small reusable building blocks: level meter, labelled slider, formatting helpers.
+//  Small reusable building blocks: level meter, sliders with a number box you can type into, cards.
 //
 
 import SwiftUI
-
-func formatDb(_ value: Double) -> String {
-    let rounded = (value * 10).rounded() / 10
-    return (rounded > 0 ? "+" : "") + String(format: "%.1f dB", rounded)
-}
-
-func formatHz(_ value: Double) -> String {
-    value >= 1000 ? String(format: "%.1f kHz", value / 1000) : String(format: "%.0f Hz", value)
-}
 
 /// Horizontal level meter. `level` is 0...1 (see MeterModel.normalized).
 struct LevelMeter: View {
@@ -23,13 +14,12 @@ struct LevelMeter: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(.quaternary)
+                Capsule().fill(Theme.raised)
                 Capsule()
                     .fill(LinearGradient(
-                        stops: [.init(color: .green, location: 0), .init(color: .green, location: 0.75),
-                                .init(color: .yellow, location: 0.9), .init(color: .red, location: 1)],
+                        stops: [.init(color: Theme.signal, location: 0), .init(color: Theme.signal, location: 0.75),
+                                .init(color: Theme.amber, location: 0.9), .init(color: Theme.alert, location: 1)],
                         startPoint: .leading, endPoint: .trailing))
-                    .frame(width: geo.size.width)
                     .mask(alignment: .leading) {
                         Rectangle().frame(width: max(0, geo.size.width * level))
                     }
@@ -41,29 +31,62 @@ struct LevelMeter: View {
     }
 }
 
-/// Title on the left, slider in the middle, current value on the right.
+/// A number you can type. Press Return (or click elsewhere) to apply; the value is kept inside `range`.
+struct ValueField: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    var decimals = 1
+    var unit = ""
+    var width: CGFloat = 50
+    var label = "Value"
+
+    var body: some View {
+        HStack(spacing: 4) {
+            TextField(label, value: Binding(
+                get: {
+                    // round for display, and never show "-0"
+                    let scale = pow(10.0, Double(decimals))
+                    let rounded = (value * scale).rounded() / scale
+                    return rounded == 0 ? 0 : rounded
+                },
+                set: { value = min(max($0, range.lowerBound), range.upperBound) }),
+                format: .number.precision(.fractionLength(0...decimals)).grouping(.never))
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.trailing)
+                .monospacedDigit()
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Theme.raised, in: RoundedRectangle(cornerRadius: 5))
+                .frame(width: width)
+                .accessibilityLabel(label)
+            if !unit.isEmpty {
+                Text(unit).font(.caption).foregroundStyle(Theme.dim).frame(width: 22, alignment: .leading)
+            }
+        }
+        .help("Type a value from \(range.lowerBound.formatted()) to \(range.upperBound.formatted()) and press Return")
+    }
+}
+
+/// Title on the left, slider in the middle, typeable value on the right.
 struct LabeledSlider: View {
     let title: String
     @Binding var value: Double
     let range: ClosedRange<Double>
     var step: Double? = nil
-    var titleWidth: CGFloat = 110
-    let format: (Double) -> String
+    var titleWidth: CGFloat = 120
+    var unit = "dB"
+    var decimals = 1
 
     var body: some View {
         HStack(spacing: 10) {
             Text(title).frame(width: titleWidth, alignment: .leading)
             if let step {
-                Slider(value: $value, in: range, step: step)
+                Slider(value: $value, in: range, step: step).accessibilityLabel(title)
             } else {
-                Slider(value: $value, in: range)
+                Slider(value: $value, in: range).accessibilityLabel(title)
             }
-            Text(format(value))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .frame(width: 76, alignment: .trailing)
+            ValueField(value: $value, range: range, decimals: decimals, unit: unit, label: title)
         }
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -92,8 +115,8 @@ struct ToggleChip: View {
             Text(label)
                 .font(.caption.bold())
                 .frame(width: 24, height: 22)
-                .background(isOn ? color : Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
-                .foregroundStyle(isOn ? .white : .primary)
+                .background(isOn ? color : Theme.raised, in: RoundedRectangle(cornerRadius: 5))
+                .foregroundStyle(isOn ? Theme.chassis : Theme.text)
         }
         .buttonStyle(.plain)
         .help(help)
@@ -102,18 +125,65 @@ struct ToggleChip: View {
     }
 }
 
-/// Section card with a title.
-struct Card<Content: View>: View {
+/// A selectable pill, used for sound modes, saved spots and similar choices.
+struct ChoiceButton: View {
     let title: String
+    let isSelected: Bool
+    var tint = Theme.signal
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .padding(.horizontal, 10)
+                .background(isSelected ? tint : Theme.raised, in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(isSelected ? Theme.chassis : Theme.text)
+                .fontWeight(isSelected ? .semibold : .regular)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// Small grey explanation text.
+struct Hint: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(Theme.dim)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Section panel with a title.
+struct Card<Content: View, Accessory: View>: View {
+    let title: String
+    @ViewBuilder var accessory: Accessory
     @ViewBuilder var content: Content
+
+    init(title: String, @ViewBuilder accessory: () -> Accessory = { EmptyView() }, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.accessory = accessory()
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.headline)
+            HStack {
+                Text(title).font(.headline)
+                Spacer()
+                accessory
+            }
             content
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.panel, in: RoundedRectangle(cornerRadius: 12))
     }
 }

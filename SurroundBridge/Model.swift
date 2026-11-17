@@ -87,6 +87,124 @@ struct ChannelState: Codable, Equatable {
     var eq = EQBand.defaults
 }
 
+/// Ready-made equaliser curves. They work for one speaker or for the "All speakers" equaliser.
+struct EQPreset: Identifiable {
+    let name: String
+    let bands: [EQBand]
+    var id: String { name }
+
+    private static func make(_ name: String, _ bands: [(FilterType, Double, Double, Double)?]) -> EQPreset {
+        EQPreset(name: name, bands: zip(EQBand.defaults, bands).map { fallback, spec in
+            guard let (type, freq, gain, q) = spec else { return fallback }
+            return EQBand(type: type, enabled: true, freq: freq, gainDb: gain, q: q)
+        })
+    }
+
+    static let all: [EQPreset] = [
+        EQPreset(name: "Flat", bands: EQBand.defaults),
+        make("Bass Boost", [(.lowShelf, 90, 5, 0.71), nil, nil, nil, nil]),
+        make("Bass Cut", [(.lowShelf, 120, -6, 0.71), nil, nil, nil, nil]),
+        make("Treble Boost", [nil, nil, nil, nil, (.highShelf, 8000, 4, 0.71)]),
+        make("Loudness (quiet listening)", [(.lowShelf, 90, 5, 0.71), nil, nil, nil, (.highShelf, 9000, 4, 0.71)]),
+        make("Warm", [(.lowShelf, 150, 3, 0.71), nil, nil, (.peak, 3500, -1.5, 1), (.highShelf, 8000, -3, 0.71)]),
+        make("Bright", [nil, nil, nil, (.peak, 4500, 2, 1), (.highShelf, 9000, 4, 0.71)]),
+        make("Rock", [(.lowShelf, 90, 4, 0.71), nil, (.peak, 700, -2.5, 0.9), (.peak, 3500, 2, 1), (.highShelf, 9000, 3, 0.71)]),
+        make("Clear Dialogue", [(.lowShelf, 120, -2, 0.71), (.peak, 300, -2, 1), (.peak, 2200, 4, 0.8), nil, nil]),
+        make("Night (less rumble)", [(.lowShelf, 140, -8, 0.71), nil, (.peak, 2000, 2, 0.8), nil, nil]),
+        make("Voice Only (for center)", [(.highPass, 150, 0, 0.71), nil, (.peak, 2000, 3, 0.8), nil, (.lowPass, 7000, 0, 0.71)]),
+    ]
+}
+
+struct Point2: Codable, Equatable {
+    var x: Double
+    var y: Double
+}
+
+/// A named place you listen from, e.g. "Desk" or "Bed".
+struct ListeningSpot: Codable, Equatable, Identifiable {
+    var name: String
+    var position: Point2
+    var id: String { name }
+}
+
+/// What the position feature adds to one speaker.
+struct PositionAdjustment {
+    var distanceM = 0.0
+    var trimDb = 0.0
+    var delayMs = 0.0
+}
+
+/// The room picture: where the speakers are, where you are, and how to compensate for it.
+/// Positions are stored as fractions of the room (0...1 across, 0...1 from the TV wall to the back wall).
+struct RoomState: Codable, Equatable {
+    var compensate = false
+    var adjustLevel = true
+    var adjustDelay = true
+    var widthM = 4.0
+    var depthM = 4.5
+    var speakers = RoomState.defaultSpeakers
+    var listener = Point2(x: 0.5, y: 0.6)
+    var spots: [ListeningSpot] = []
+
+    static let defaultSpeakers: [Point2] = [
+        Point2(x: 0.15, y: 0.14),   // front left
+        Point2(x: 0.85, y: 0.14),   // front right
+        Point2(x: 0.5, y: 0.1),     // center
+        Point2(x: 0.3, y: 0.1),     // subwoofer
+        Point2(x: 0.12, y: 0.86),   // surround left
+        Point2(x: 0.88, y: 0.86),   // surround right
+    ]
+
+    static let speedOfSound = 343.0      // metres per second
+    static let maxTrimDb = 15.0
+
+    init() {}
+
+    /// Tolerant decoding: settings saved by an older version simply keep the defaults for anything new.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = RoomState()
+        compensate = (try? c.decodeIfPresent(Bool.self, forKey: .compensate)) ?? d.compensate
+        adjustLevel = (try? c.decodeIfPresent(Bool.self, forKey: .adjustLevel)) ?? d.adjustLevel
+        adjustDelay = (try? c.decodeIfPresent(Bool.self, forKey: .adjustDelay)) ?? d.adjustDelay
+        widthM = (try? c.decodeIfPresent(Double.self, forKey: .widthM)) ?? d.widthM
+        depthM = (try? c.decodeIfPresent(Double.self, forKey: .depthM)) ?? d.depthM
+        let saved = (try? c.decodeIfPresent([Point2].self, forKey: .speakers)) ?? d.speakers
+        speakers = saved.count == 6 ? saved : d.speakers
+        listener = (try? c.decodeIfPresent(Point2.self, forKey: .listener)) ?? d.listener
+        spots = (try? c.decodeIfPresent([ListeningSpot].self, forKey: .spots)) ?? d.spots
+    }
+
+    /// Straight-line distance in metres from the listener to a speaker.
+    func distance(to speaker: Int) -> Double {
+        let dx = (speakers[speaker].x - listener.x) * widthM
+        let dy = (speakers[speaker].y - listener.y) * depthM
+        return max((dx * dx + dy * dy).squareRoot(), 0.3)
+    }
+
+    /// Works out how much quieter and later each speaker must play so that, where you sit,
+    /// all speakers are equally loud and their sound arrives at the same moment.
+    ///  - Timing: sound travels 343 m/s, so nearer speakers are held back until the farthest one has "caught up".
+    ///  - Volume: sound gets about 6 dB quieter each time the distance doubles, so nearer speakers are turned down
+    ///    to match the farthest one. (The subwoofer is left alone: deep bass fills a room far more evenly.)
+    func adjustments() -> [PositionAdjustment] {
+        let distances = (0..<6).map { distance(to: $0) }
+        var result = distances.map { PositionAdjustment(distanceM: $0) }
+        guard compensate else { return result }
+        let farthest = distances.max() ?? 1
+        let farthestMain = distances.enumerated().filter { $0.offset != Speaker.sub.rawValue }.map(\.element).max() ?? 1
+        for i in 0..<6 {
+            if adjustDelay {
+                result[i].delayMs = (farthest - distances[i]) / Self.speedOfSound * 1000
+            }
+            if adjustLevel && i != Speaker.sub.rawValue {
+                result[i].trimDb = max(20 * log10(distances[i] / farthestMain), -Self.maxTrimDb)
+            }
+        }
+        return result
+    }
+}
+
 /// Everything that makes up "how it sounds". This is what presets save and load.
 struct BridgeState: Codable, Equatable {
     var bypass = false
@@ -94,6 +212,9 @@ struct BridgeState: Codable, Equatable {
     /// routing[speaker][source]: how much of each source channel goes to each speaker (1 = full, 0 = none, negative = phase flipped).
     var routing = RoutingPreset.direct.matrix
     var channels = [ChannelState](repeating: ChannelState(), count: Speaker.allCases.count)
+    /// Equaliser applied to every speaker, on top of each speaker's own.
+    var masterEQ = EQBand.defaults
+    var room = RoomState()
 
     /// On by default: stereo sources (music) have no subwoofer channel, so without this the sub channel stays empty.
     var bassEnabled = true
@@ -105,21 +226,47 @@ struct BridgeState: Codable, Equatable {
     var limiterCeilingDb = -1.0
     var limiterReleaseMs = 100.0
 
+    init() {}
+
+    /// Tolerant decoding, so settings and presets saved by an older version still load.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = BridgeState()
+        bypass = (try? c.decodeIfPresent(Bool.self, forKey: .bypass)) ?? d.bypass
+        masterGainDb = (try? c.decodeIfPresent(Double.self, forKey: .masterGainDb)) ?? d.masterGainDb
+        routing = (try? c.decodeIfPresent([[Double]].self, forKey: .routing)) ?? d.routing
+        channels = (try? c.decodeIfPresent([ChannelState].self, forKey: .channels)) ?? d.channels
+        masterEQ = (try? c.decodeIfPresent([EQBand].self, forKey: .masterEQ)) ?? d.masterEQ
+        room = (try? c.decodeIfPresent(RoomState.self, forKey: .room)) ?? d.room
+        bassEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .bassEnabled)) ?? d.bassEnabled
+        crossoverHz = (try? c.decodeIfPresent(Double.self, forKey: .crossoverHz)) ?? d.crossoverHz
+        bassFrom = (try? c.decodeIfPresent([Bool].self, forKey: .bassFrom)) ?? d.bassFrom
+        bassRedirectDb = (try? c.decodeIfPresent(Double.self, forKey: .bassRedirectDb)) ?? d.bassRedirectDb
+        limiterEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .limiterEnabled)) ?? d.limiterEnabled
+        limiterCeilingDb = (try? c.decodeIfPresent(Double.self, forKey: .limiterCeilingDb)) ?? d.limiterCeilingDb
+        limiterReleaseMs = (try? c.decodeIfPresent(Double.self, forKey: .limiterReleaseMs)) ?? d.limiterReleaseMs
+    }
+
     /// Converts to the plain C struct the audio engine understands.
     func makeParams(tone: Speaker?, toneType: Int, toneLevelDb: Double) -> SBParams {
         var p = SBParams()
         sb_params_init_default(&p)
         p.bypass = bypass
         p.masterGainDb = Float(masterGainDb)
+        let position = room.adjustments()
+        for (b, band) in masterEQ.prefix(Int(SB_NUM_EQ_BANDS)).enumerated() {
+            sb_params_master_band(&p, Int32(b)).pointee = band.cBand
+        }
         for out in 0..<6 {
             for src in 0..<6 {
                 sb_params_set_route(&p, Int32(out), Int32(src), Float(routing[out][src]))
             }
             let ch = sb_params_channel(&p, Int32(out))!
-            ch.pointee.gainDb = Float(channels[out].gainDb)
+            // your own setting plus whatever the listening-position feature adds
+            ch.pointee.gainDb = Float(channels[out].gainDb + position[out].trimDb)
             ch.pointee.mute = channels[out].mute
             ch.pointee.solo = channels[out].solo
-            ch.pointee.delayMs = Float(channels[out].delayMs)
+            ch.pointee.delayMs = Float(min(channels[out].delayMs + position[out].delayMs, Double(SB_MAX_DELAY_MS)))
             for (b, band) in channels[out].eq.prefix(Int(SB_NUM_EQ_BANDS)).enumerated() {
                 sb_channel_band(ch, Int32(b)).pointee = band.cBand
             }
@@ -141,6 +288,7 @@ struct BridgeState: Codable, Equatable {
     var isWellFormed: Bool {
         routing.count == 6 && routing.allSatisfy { $0.count == 6 } && channels.count == 6
             && channels.allSatisfy { $0.eq.count == Int(SB_NUM_EQ_BANDS) } && bassFrom.count == 6
+            && masterEQ.count == Int(SB_NUM_EQ_BANDS) && room.speakers.count == 6
     }
 }
 
@@ -149,19 +297,8 @@ struct RoutingPreset: Identifiable {
     let name: String
     let summary: String
     let matrix: [[Double]]
-    /// Some modes also shape the tone of the center speaker (nil = leave the center's equaliser flat).
-    var centerEQ: [EQBand]? = nil
 
     var id: String { name }
-
-    /// Center EQ that favours the vocal range: cuts deep bass and the very top, and lifts the "presence" region.
-    static let vocalFocusEQ: [EQBand] = [
-        EQBand(type: .highPass, enabled: true, freq: 150, q: 0.71),
-        EQBand(type: .peak, freq: 250, q: 1),
-        EQBand(type: .peak, enabled: true, freq: 2000, gainDb: 3, q: 0.8),
-        EQBand(type: .peak, freq: 4000, q: 1),
-        EQBand(type: .lowPass, enabled: true, freq: 7000, q: 0.71),
-    ]
 
     private static func build(_ routes: [(Speaker, Speaker, Double)]) -> [[Double]] {
         var m = [[Double]](repeating: [Double](repeating: 0, count: 6), count: 6)
@@ -178,18 +315,8 @@ struct RoutingPreset: Identifiable {
         summary: "Every channel goes to its own speaker, untouched. Stereo sources play from the front pair only.",
         matrix: build(straight))
 
-    static let music = RoutingPreset(
-        name: "Music",
-        summary: "For stereo music: left and right also play from the surrounds behind you, and the center plays a blend of both that is filtered to favour voices. Sound comes from all around the room.",
-        matrix: build(straight + [
-            (.surroundLeft, .frontLeft, minus3dB), (.surroundRight, .frontRight, minus3dB),
-            (.center, .frontLeft, half), (.center, .frontRight, half),
-        ]),
-        centerEQ: vocalFocusEQ)
-
     static let all: [RoutingPreset] = [
         direct,
-        music,
         RoutingPreset(
             name: "All Channel Stereo",
             summary: "Left also plays from the left surround, right from the right surround, and the center gets a mix of both. Fills the room with stereo music.",
@@ -297,24 +424,46 @@ final class BridgeModel {
 
     // MARK: sound modes
 
-    func isActive(_ preset: RoutingPreset) -> Bool {
-        guard state.routing == preset.matrix else { return false }
-        return preset.centerEQ == nil || state.channels[Speaker.center.rawValue].eq == preset.centerEQ
+    func isActive(_ preset: RoutingPreset) -> Bool { state.routing == preset.matrix }
+
+    func apply(_ preset: RoutingPreset) { state.routing = preset.matrix }
+
+    // MARK: listening position
+
+    /// True while the speakers in the room picture can be dragged to match the real room.
+    var isArrangingSpeakers = false
+
+    func saveSpot(named name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        state.room.spots.removeAll { $0.name == trimmed }
+        state.room.spots.append(ListeningSpot(name: trimmed, position: state.room.listener))
     }
 
-    /// Switches to a sound mode: sets the routing, and the center speaker's EQ if the mode has one.
-    func apply(_ preset: RoutingPreset) {
-        var new = state
-        new.routing = preset.matrix
-        let center = Speaker.center.rawValue
-        if let eq = preset.centerEQ {
-            new.channels[center].eq = eq
-        } else if RoutingPreset.all.contains(where: { $0.centerEQ == new.channels[center].eq }) {
-            // leaving a mode that had shaped the center: put its equaliser back to flat
-            new.channels[center].eq = EQBand.defaults
-        }
-        state = new
+    /// Moves "you" to a saved spot and turns the position adjustment on.
+    func goToSpot(_ spot: ListeningSpot) {
+        var room = state.room
+        room.listener = spot.position
+        room.compensate = true
+        state.room = room
     }
+
+    var currentSpot: ListeningSpot? {
+        state.room.spots.first { $0.position == state.room.listener }
+    }
+
+    /// Developer aid for window pictures: an example state that is never written to disk.
+    func loadDemoStateForSnapshot() {
+        isSnapshotDemo = true
+        var demo = state
+        demo.room.compensate = true
+        demo.room.listener = Point2(x: 0.62, y: 0.34)
+        demo.room.spots = [ListeningSpot(name: "Desk", position: demo.room.listener),
+                           ListeningSpot(name: "Bed", position: Point2(x: 0.5, y: 0.8))]
+        demo.masterEQ = EQPreset.all.first { $0.name == "Rock" }?.bands ?? demo.masterEQ
+        state = demo
+    }
+    private var isSnapshotDemo = false
 
     private func pushToEngine() {
         var params = state.makeParams(tone: toneSpeaker, toneType: toneType, toneLevelDb: toneLevelDb)
@@ -323,6 +472,7 @@ final class BridgeModel {
 
     /// Writes the settings to disk shortly after the last change (not on every slider tick).
     private func scheduleSave() {
+        guard !isSnapshotDemo else { return }
         saveWork?.cancel()
         let snapshot = state
         let work = DispatchWorkItem {
@@ -405,7 +555,9 @@ final class BridgeModel {
     func loadPreset(named name: String) {
         guard let data = try? Data(contentsOf: presetURL(name)),
               let loaded = try? JSONDecoder().decode(BridgeState.self, from: data), loaded.isWellFormed else { return }
-        state = loaded
+        var new = loaded
+        new.room = state.room      // presets change the sound, not where your speakers and seat are
+        state = new
         currentPresetName = name
     }
 
@@ -416,7 +568,9 @@ final class BridgeModel {
     }
 
     func resetToDefaults() {
-        state = BridgeState()
+        var new = BridgeState()
+        new.room = state.room
+        state = new
         currentPresetName = nil
     }
 }
