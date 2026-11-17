@@ -116,7 +116,7 @@ struct ToggleChip: View {
                 .font(.caption.bold())
                 .frame(width: 24, height: 22)
                 .background(isOn ? color : Theme.raised, in: RoundedRectangle(cornerRadius: 5))
-                .foregroundStyle(isOn ? Theme.chassis : Theme.text)
+                .foregroundStyle(isOn ? Theme.onSignal : Theme.text)
         }
         .buttonStyle(.plain)
         .help(help)
@@ -140,7 +140,7 @@ struct ChoiceButton: View {
                 .padding(.vertical, 7)
                 .padding(.horizontal, 10)
                 .background(isSelected ? tint : Theme.raised, in: RoundedRectangle(cornerRadius: 8))
-                .foregroundStyle(isSelected ? Theme.chassis : Theme.text)
+                .foregroundStyle(isSelected ? Theme.onSignal : Theme.text)
                 .fontWeight(isSelected ? .semibold : .regular)
         }
         .buttonStyle(.plain)

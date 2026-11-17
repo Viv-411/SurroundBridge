@@ -15,15 +15,16 @@ struct ContentView: View {
     }()
 
     enum Tab: String, CaseIterable, Identifiable {
-        case speakers, routing, bass, room
+        case speakers, routing, bass, room, settings
         var id: String { rawValue }
 
         var title: String {
             switch self {
-            case .speakers: "Speakers & EQ"
+            case .speakers: "Speakers"
             case .routing: "Routing"
-            case .bass: "Bass & Protection"
-            case .room: "Room & Position"
+            case .bass: "Bass"
+            case .room: "Room"
+            case .settings: "Settings"
             }
         }
 
@@ -33,6 +34,7 @@ struct ContentView: View {
             case .routing: "point.3.connected.trianglepath.dotted"
             case .bass: "waveform.path.ecg"
             case .room: "sofa.fill"
+            case .settings: "gearshape.fill"
             }
         }
     }
@@ -61,6 +63,7 @@ struct ContentView: View {
                             case .routing: RoutingTab()
                             case .bass: BassTab()
                             case .room: RoomTab()
+                            case .settings: SettingsTab()
                             }
                         }
                         .padding(.leading, 8)
@@ -73,8 +76,8 @@ struct ContentView: View {
         .background(Theme.chassis)
         .foregroundStyle(Theme.text)
         .tint(Theme.signal)
-        .fontDesign(.rounded)
-        .preferredColorScheme(.dark)
+        .fontDesign(Theme.current.rounded ? .rounded : .default)
+        .preferredColorScheme(Theme.current.colorScheme)
     }
 
     private var tabBar: some View {
@@ -83,6 +86,8 @@ struct ContentView: View {
                 let isSelected = tab == item
                 Button { tab = item } label: {
                     Label(item.title, systemImage: item.icon)
+                        .lineLimit(1)
+                        .fixedSize()
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                         .background(isSelected ? Theme.panel : .clear, in: RoundedRectangle(cornerRadius: 8))
@@ -187,8 +192,14 @@ struct PositionCard: View {
     var body: some View {
         @Bindable var model = model
         Card(title: "Where you sit") {
-            Toggle("Adjust speakers for my position", isOn: $model.state.room.compensate)
-                .tint(Theme.amber)
+            HStack {
+                Toggle("Adjust speakers for my position", isOn: $model.state.room.compensate)
+                    .tint(Theme.amber)
+                Spacer()
+                Button("Reset") { model.resetListener() }
+                    .help("Put “You” back in the middle of the room")
+                    .accessibilityLabel("Reset my position")
+            }
             if !model.state.room.spots.isEmpty {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 6)], spacing: 6) {
                     ForEach(model.state.room.spots) { spot in
@@ -199,7 +210,7 @@ struct PositionCard: View {
                 }
             }
             Hint(model.state.room.spots.isEmpty
-                 ? "Drag the amber marker to your seat. Save spots like Desk or Bed under Room & Position."
+                 ? "Drag the amber marker to your seat. Save spots like Desk or Bed in the Room tab."
                  : "Drag the amber marker, or pick a saved spot.")
         }
     }

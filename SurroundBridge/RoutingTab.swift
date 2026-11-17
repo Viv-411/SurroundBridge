@@ -91,7 +91,7 @@ struct RoutingTab: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(isOn ? Theme.signal.opacity(0.3 + 0.7 * min(abs(gain), 1)) : Theme.raised.opacity(0.6))
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(isSelected ? Theme.text : .clear, lineWidth: 2))
-                .overlay(Text(label).font(.caption.monospacedDigit().weight(.semibold)).foregroundStyle(Theme.chassis))
+                .overlay(Text(label).font(.caption.monospacedDigit().weight(.semibold)).foregroundStyle(Theme.onSignal))
                 .frame(width: 54, height: 34)
         }
         .buttonStyle(.plain)

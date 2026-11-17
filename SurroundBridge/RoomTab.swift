@@ -96,6 +96,7 @@ struct RoomTab: View {
                     Toggle("Arrange speakers", isOn: $model.isArrangingSpeakers)
                         .toggleStyle(.switch)
                     Spacer()
+                    Button("Reset my position") { model.resetListener() }
                     Button("Reset speaker positions") { model.state.room.speakers = RoomState.defaultSpeakers }
                 }
                 Hint(model.isArrangingSpeakers

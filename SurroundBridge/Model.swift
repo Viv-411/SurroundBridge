@@ -448,6 +448,11 @@ final class BridgeModel {
         state.room = room
     }
 
+    /// Puts "you" back in the middle of the room.
+    func resetListener() {
+        state.room.listener = RoomState().listener
+    }
+
     var currentSpot: ListeningSpot? {
         state.room.spots.first { $0.position == state.room.listener }
     }

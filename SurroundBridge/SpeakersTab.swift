@@ -34,7 +34,7 @@ struct SpeakersTab: View {
                     }
                 }
                 Hint(model.state.room.compensate
-                     ? "Position adjustment is on, so each speaker also gets the extra volume trim and delay listed under Room & Position."
+                     ? "Position adjustment is on, so each speaker also gets the extra volume trim and delay listed in the Room tab."
                      : "Delay holds a speaker back by a few milliseconds. Turn on “Adjust speakers for my position” to have it worked out from your room.")
             }
 
@@ -79,7 +79,7 @@ private struct ChannelRow: View {
                     Text(speaker.short).font(.caption.bold()).frame(width: 32)
                         .padding(.vertical, 3)
                         .background(isSelected ? Theme.signal : Theme.raised, in: RoundedRectangle(cornerRadius: 5))
-                        .foregroundStyle(isSelected ? Theme.chassis : Theme.text)
+                        .foregroundStyle(isSelected ? Theme.onSignal : Theme.text)
                     Text(speaker.name).lineLimit(1)
                     Spacer(minLength: 0)
                 }

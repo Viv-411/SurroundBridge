@@ -132,10 +132,7 @@ final class AppController: NSObject, NSWindowDelegate, NSMenuDelegate {
                 .environment(MeterModel.shared))
             let window = NSWindow(contentViewController: hosting)
             window.title = "SurroundBridge"
-            // match the window frame to the app's own dark navy look
-            window.appearance = NSAppearance(named: .darkAqua)
             window.titlebarAppearsTransparent = true
-            window.backgroundColor = NSColor(red: 0.086, green: 0.110, blue: 0.157, alpha: 1)
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
             window.delegate = self
@@ -144,6 +141,7 @@ final class AppController: NSObject, NSWindowDelegate, NSMenuDelegate {
             window.setFrameAutosaveName("SurroundBridgeMainWindow")
             self.window = window
         }
+        applyWindowTheme()
         installMainMenuIfNeeded()
         // While the window is open we behave like a normal app (Dock icon, menus); otherwise we live in the menu bar only.
         NSApp.setActivationPolicy(.regular)
@@ -171,6 +169,18 @@ final class AppController: NSObject, NSWindowDelegate, NSMenuDelegate {
             NSLog("SurroundBridge snapshot saved to %@", url.path)
             NSApp.terminate(nil)
         }
+    }
+
+    /// Makes the window frame (title bar, background) match the chosen theme.
+    func applyWindowTheme() {
+        guard let window else { return }
+        let palette = ThemeStore.shared.theme.palette
+        switch palette.colorScheme {
+        case .dark: window.appearance = NSAppearance(named: .darkAqua)
+        case .light: window.appearance = NSAppearance(named: .aqua)
+        default: window.appearance = nil     // follow the Mac
+        }
+        window.backgroundColor = NSColor(palette.chassis)
     }
 
     func windowWillClose(_ notification: Notification) {
