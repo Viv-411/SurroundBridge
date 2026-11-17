@@ -28,6 +28,10 @@ extern "C" {
 #import "AVFoundationHelper.h"
 #import "AudioTap.h"
 
+#import "SurroundBridge-Swift.h" // SurroundBridge: the Swift UI layer
+
+NSNotificationName const SBChainsDidChangeNotification = @"SBChainsDidChangeNotification";
+
 @interface AppDelegate ()
 @property (weak) IBOutlet NSMenu *statusItemMenu;
 @property (weak) IBOutlet NSMenuItem *upmixMenuItem;
@@ -205,6 +209,9 @@ AIAuthorizationStatus _audioInputAuthorizationStatus = AIAuthorizationStatusNotD
 
 static void UpdateStatusItem()
 {
+  // SurroundBridge: let the UI know (this function is called whenever the set of running chains changes)
+  [[NSNotificationCenter defaultCenter] postNotificationName:SBChainsDidChangeNotification object:nil];
+
   if (_chains.empty() == _statusItem.button.appearsDisabled)
     return;
 
@@ -508,6 +515,13 @@ static void AttemptToStartMissingChains(CAHelper::DefaultDeviceChanger *defaultD
   }
 }
 
+- (nullable NSString *)activeOutputName
+{
+  if (_chains.empty())
+    return nil;
+  return CFBridgingRelease(CAHelper::GetStringProperty(_chains.front()->_output._device, CAHelper::ObjectNameAddress));
+}
+
 - (IBAction)openHomepage:(id)sender
 {
   [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://codeberg.org/q-p/SoundPusher"]];
@@ -555,6 +569,11 @@ static void AttemptToStartMissingChains(CAHelper::DefaultDeviceChanger *defaultD
   // if our plugin is present, let's acquire the box (i.e. make the device show up)
   _deviceBoxAcquirer.emplace(CFSTR(kBox_UID));
 
+  // SurroundBridge: add our own menu items, and hide SoundPusher's built-in stereo upmix (our routing matrix replaces it)
+  _upmixMenuItem.hidden = YES;
+  _enableUpmix = false;
+  [[SBAppController shared] installInMenu:self.statusItemMenu];
+
   _numOriginalMenuItems = self.statusItemMenu.numberOfItems; // so we know how many to keep when updating the menu
 
   _upmixMenuItem.state = _enableUpmix ? NSControlStateValueOn : NSControlStateValueOff;
@@ -579,6 +598,9 @@ static void AttemptToStartMissingChains(CAHelper::DefaultDeviceChanger *defaultD
     name:NSWorkspaceWillSleepNotification object:NULL];
   [[[NSWorkspace sharedWorkspace] notificationCenter] addObserver:self selector:@selector(receiveWakeNote:)
     name:NSWorkspaceDidWakeNotification object:NULL];
+
+  [[SBAppController shared] showWindow];
+  [[SBAppController shared] saveSnapshotIfRequested];
 
   // our acquiring of the box with our device may have posted some messages, so process those messages first
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)NSEC_PER_SEC / 4), dispatch_get_main_queue(), ^{

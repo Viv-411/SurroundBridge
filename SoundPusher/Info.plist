@@ -24,7 +24,7 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
-	<key>LSBackgroundOnly</key>
+	<key>LSUIElement</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
@@ -33,9 +33,9 @@
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Audio input (which counts as microphone access) from the selected audio device is the source of the encoded audio; no other audio devices are used as input.</string>
+	<string>SurroundBridge reads audio from its own virtual 5.1 device (macOS counts this as microphone access). Your real microphone is not used.</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>SoundPusher requires access to application audio to encode and output it.</string>
+	<string>SurroundBridge captures the sound your Mac is playing so it can process it and send it to your surround system.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

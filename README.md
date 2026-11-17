@@ -1,57 +1,70 @@
-# Sound Pusher — real-time encoded audio output for OS X
-Provides a virtual 5.1-channel audio output device whose contents are real-time encoded to `AC3` and sent as digital `SPDIF` stream to a real audio device output.
+# SurroundBridge
 
-**WARNING:** Please turn down the speaker / headphone volume before running this application, as any component misinterpreting a compressed audio stream as "normal" audio signals may result in unexpectedly loud noise.
+A macOS app that gives you full control over what a 5.1 speaker system plays, even when the only
+connection to it is HDMI/ARC or optical (which can't carry 5.1 as plain audio).
+
+It captures your Mac's sound as 5.1, runs it through your own settings, encodes it to Dolby Digital
+(AC-3) in real time and sends that to the TV / receiver.
+
+```
+Mac apps → "SoundPusher Audio" virtual 5.1 device → capture
+        → routing → bass management → EQ → volume → delay → limiter      (SurroundCore)
+        → AC-3 encoder (FFmpeg) → HDMI / optical → your speakers
+```
+
+**Turn the volume down before first use.** If any device misreads the Dolby Digital stream as
+normal audio you get loud static.
+
+## Features
+- Routing matrix (any source channel → any speaker, with level and phase), plus receiver-style sound
+  modes: Direct 5.1, All Channel Stereo, Matrix Surround, Stereo 2.0 / 2.1, Front Stage 3.1,
+  Phantom Center, 5-Channel Mono
+- Per speaker: volume, mute, solo, delay and a 5-band parametric EQ with a draggable curve
+- Bass management: adjustable crossover that moves low frequencies to the subwoofer
+- Safety limiter so nothing clips
+- Test signal on one speaker at a time, or walking around the room
+- Live level meters, presets you can save and load, menu bar control
 
 ## Requirements
-The application requires macOS 14.2 "Sonoma" due to use of Core Audio taps to capture the system audio.
-It requires a compatible audio device capable of outputting compressed `AC3` audio formats (format IDs `ac-3`, `cac3`, `IAC3`, `iac3`). All testing was done with `cac3` (aka `kAudioFormat60958AC3`).
+macOS 14.2 or later, Apple Silicon, Xcode, and an output device that accepts an AC-3 stream.
+Run `swift scripts/list-audio-formats.swift` and look for `cac3` under your device.
 
-## Usage
-There are two components required to make this work:
-
-1. `SoundPusherAudio` — A user-space (sand-boxed) CoreAudio driver (aka `AudioServerPlugin`) that provides a 5.1 channel output stream whose contents can then be captured. `SoundPusherAudio.driver` must be installed (copied) into the `/Library/Audio/Plug-Ins/HAL` directory. This driver was previously called `Loopback Audio` and you may have to remove the old version (called `LoopbackAudio.driver`) manually. Note that if this device provides audio inputs, you may have to allow microphone access in addition to system audio recording permission. Older versions of this driver used to mirror the output it receives back to its (virtual) microphone input. The last release that included this loopback functionality was [v1.4.2](https://codeberg.org/q-p/SoundPusher/releases/tag/v1.4.2). Feel free to use that version of the driver, but I'd recommend you look at [Rogue Amoeba's Loopback](https://rogueamoeba.com/loopback/) since I'm not interested in supporting that use case.
-2. `SoundPusher` — An application that continuously reads audio from `SoundPusher Audio` (or any other suitable) device, encodes it into a compressed format, and then sends that compressed stream to a (hopefully) real sound device's digital output stream. This is controlled through its menu bar extra.
-
-Once the driver is installed and `SoundPusher` running, you should be able to select the desired combination of supported source and digital output devices (which will forward any sound output from the source device to the designated digital output). `SoundPusher` will set the default output device to the selected source device (e.g. `SoundPusher Audio`) and restore the default device on exit.
-
-Note that the `SoundPusher Audio` device will be hidden unless the `SoundPusher` application is running.
-
-You can override the default IOCycle timing adjustment (which attempts to postpone the encoding to as late as possible to just before the hardware needs the next packet) in case you notice sound drop-outs or overloads. The default is a safety-factor of 8. This is done via `defaults write de.maven.SoundPusher IOCycleSafetyFactor -float <value>`. Any value less than 1 disables IOCycle adjustment altogether, which means that CoreAudio starts preparing the next packet roughly when the current packet is sent to the hardware (which is usually a bit of a waste as current hardware can easily encode 100x faster than real-time).
-
-You can also switch back to the old rear channel upmixing with `defaults write de.maven.SoundPusher UpmixDPLiiRear -bool NO`.
-
-## Contact & Support
-Please report any issues on [Codeberg](https://codeberg.org/q-p/SoundPusher).
-
-## Dependencies
-### FFmpeg — libavcodec, libavformat, libswresample
-Here's a script that builds a cut-down version of [FFmpeg](http://www.ffmpeg.org) that includes all that's required for SoundPusher:
+## Building
 ```sh
-#!/bin/sh
-MACOSX_DEPLOYMENT_TARGET=10.14 export MACOSX_DEPLOYMENT_TARGET
-# when compiling for x86_64 on Apple Silicon (aarch64) you probably want to install yasm and add the following:
-# --extra-cflags="-target x86_64-apple-macos10.14" --extra-ldflags="-target x86_64-apple-macos10.14" --arch=x86 --x86asmexe=<PATH_TO_YASM>/bin/yasm
-./configure --prefix=$FFMPEG_HOME --cc=clang --extra-cflags="-fno-stack-check" --disable-static --enable-shared --disable-all --disable-autodetect --disable-programs --disable-doc --disable-everything --disable-pthreads --disable-network --disable-dct --disable-dwt --disable-lsp --disable-lzo --disable-rdft --disable-faan --disable-pixelutils --enable-avutil --enable-avcodec --enable-avformat --enable-swresample --enable-encoder=ac3 --enable-muxer=spdif
-make -j8
-make install
-# update shared library install names
-cd $FFMPEG_HOME/lib
-AVUTIL_ID=`otool -D libavutil.dylib | tail -1`
-AVCODEC_ID=`otool -D libavcodec.dylib | tail -1`
-AVFORMAT_ID=`otool -D libavformat.dylib | tail -1`
-SWRESAMPLE_ID=`otool -D libswresample.dylib | tail -1`
-for lib in libavutil libavcodec libavformat libswresample
-do
-    install_name_tool -id @rpath/$lib.dylib -change $AVUTIL_ID @rpath/libavutil.dylib -change $AVCODEC_ID @rpath/libavcodec.dylib -change $AVFORMAT_ID @rpath/libavformat.dylib -change $SWRESAMPLE_ID @rpath/libswresample.dylib $lib.dylib
-done
-```
-If you're building a universal binary (for Intel (x86_64) and Apple Silicon (aarch64)) you probably want to compile FFmpeg twice and then  `lipo -create -output <outLib> <inLibA> <inLibB>` all the resulting libs together.
-Note that you should add `FFMPEG_HOME` in Xcode's `Preferences` -> `Locations` -> `Custom Paths` and point it towards the install directory of FFmpeg so that the Xcode project can find it.
+# 1. FFmpeg 4.4.x (the series the encoder code is written against)
+git clone --depth 1 --branch n4.4.8 https://git.ffmpeg.org/ffmpeg.git deps/ffmpeg-src
+(cd deps/ffmpeg-src && FFMPEG_HOME="$PWD/../ffmpeg" ../../scripts/build-ffmpeg.sh)
 
-## Acknowledgements
-This software is built on the experience of others:
-- `SoundPusherAudio` (formerly known as `LoopbackAudio`) is based on the `NullAudio` user-space driver provided by Apple as example code.
-- [TPCircularBuffer](https://github.com/michaeltyson/TPCircularBuffer/) by Michael Tyson is used to move audio and packet data around.
-- [FFmpeg](http://www.ffmpeg.org) is used to encode to compressed formats and then mux those packets into an `SPDIF` compliant bit-stream.
-- [Joseph Lyncheski's Core Audio Tap example](https://gist.github.com/directmusic/7d653806c24fe5bb8166d12a9f4422de)
+# 2. the driver and the app (signed with your "Apple Development" certificate)
+scripts/build.sh
+
+# 3. install the virtual audio device, then restart Core Audio
+sudo cp -R build/Release/SoundPusherAudio.driver /Library/Audio/Plug-Ins/HAL/
+sudo killall coreaudiod
+
+# 4. run
+open build/Release/SurroundBridge.app
+```
+Unit tests for the audio maths: `cd Core && swift test`
+
+## Layout of this repository
+| Folder | What it is |
+|---|---|
+| `Core/` | SurroundCore: the audio processing engine (C++ with a C interface) and its tests |
+| `SurroundBridge/` | The SwiftUI window, menu bar additions and settings model |
+| `SoundPusher/` | SoundPusher's capture → encode → output engine, with small hooks for SurroundBridge |
+| `SoundPusherAudio/` | SoundPusher's virtual 5.1 audio device (unchanged) |
+| `scripts/` | Build scripts and test-file generators |
+
+## Credits
+SurroundBridge is built on **[SoundPusher](https://codeberg.org/q-p/SoundPusher) by Daniel Vollmer**
+(MIT license), which provides the virtual audio device, the audio capture, the real-time AC-3
+encoding and the digital output. Its original README is kept in
+[SOUNDPUSHER-README.md](SOUNDPUSHER-README.md).
+
+Also used: [FFmpeg](https://ffmpeg.org) (AC-3 encoder and S/PDIF muxer),
+[TPCircularBuffer](https://github.com/michaeltyson/TPCircularBuffer) by Michael Tyson, and filter
+formulas from Robert Bristow-Johnson's Audio EQ Cookbook.
+
+## License
+MIT, see [LICENSE](LICENSE).

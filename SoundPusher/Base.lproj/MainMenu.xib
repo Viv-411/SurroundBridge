@@ -26,14 +26,14 @@
                         <action selector="toggleUpmix:" target="Voe-Tx-rLC" id="WdH-Dr-f7G"/>
                     </connections>
                 </menuItem>
-                <menuItem title="Open Website..." id="eOH-0X-OB3">
+                <menuItem title="SoundPusher Website (original project)…" id="eOH-0X-OB3">
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <connections>
                         <action selector="openHomepage:" target="Voe-Tx-rLC" id="bEt-eZ-WRf"/>
                     </connections>
                 </menuItem>
                 <menuItem isSeparatorItem="YES" id="36S-ND-42N"/>
-                <menuItem title="Quit SoundPusher" id="gZv-Ae-GXd">
+                <menuItem title="Quit SurroundBridge" id="gZv-Ae-GXd">
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <connections>
                         <action selector="terminate:" target="-1" id="ljr-FL-95c"/>

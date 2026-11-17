@@ -100,6 +100,9 @@ protected:
   /// Buffer for interleaved input frames.
   TPCircularBuffer _inputBuffer;
 
+  /// SurroundBridge: holds one encoder packet worth of processed (interleaved) frames.
+  std::vector<float> _processedFrames;
+
   /// The amount of excess frames we want to keep to be sure we don't run out and have to continually readjust.
   uint32_t _numSafeFrames;
   /// Counter for the approximate number of output cycles, used to monitor minimum available frames over a number of cycles.

@@ -15,6 +15,8 @@
 
 #include "DigitalOutputContext.hpp"
 
+#include "SurroundCore.h" // SurroundBridge: the processing stage between capture and encode
+
 double DigitalOutputContext::IOCycleSafetyFactor = 8.0;
 
 /// @return The best matching input format for an encoder that outputs to outFormat with the given channel layout.
@@ -104,6 +106,11 @@ DigitalOutputContext::DigitalOutputContext(AudioObjectID device, AudioObjectID s
   const auto numInputChannels = GetNumInputChannels();
   TPCircularBufferInit(&_inputBuffer, 4 * numFramesPerPacket * numInputChannels * sizeof (float));
   std::memset(_inputBuffer.buffer, 0, _inputBuffer.length);
+
+  // SurroundBridge: scratch buffer for processed audio, allocated here so the audio thread never has to allocate
+  _processedFrames.assign(static_cast<size_t>(_encoder.GetNumFramesPerPacket()) * numInputChannels, 0.0f);
+  if (numInputChannels == SB_NUM_CHANNELS)
+    sb_engine_set_sample_rate(sb_shared_engine(), _format.mSampleRate);
 
   const auto safetyFactor = IOCycleSafetyFactor;
   // this also triggers some memory allocations in the upmixing code
@@ -200,7 +207,15 @@ OSStatus DigitalOutputContext::DeviceIOProcFunc(AudioObjectID inDevice, const Au
   // this might encode more than we have data for
   for (uint32_t bytesRemaining = outOutputData->mBuffers[0].mDataByteSize; bytesRemaining > 0; )
   {
-    const auto bytesWritten = me->_encoder.EncodePacket(numPackedFrames, inputBuffer, bytesRemaining, outputBuffer, shouldUpmix);
+    // SurroundBridge: run our routing / EQ / delay / bass management / limiter on the captured 5.1 audio,
+    // then hand the result to the AC-3 encoder instead of the raw input.
+    const float *encoderInput = inputBuffer;
+    if (numInputChannels == SB_NUM_CHANNELS)
+    {
+      sb_engine_process(sb_shared_engine(), inputBuffer, me->_processedFrames.data(), numPackedFrames);
+      encoderInput = me->_processedFrames.data();
+    }
+    const auto bytesWritten = me->_encoder.EncodePacket(numPackedFrames, encoderInput, bytesRemaining, outputBuffer, shouldUpmix);
     inputBuffer += numPackedFrames * numInputChannels;
     outputBuffer += bytesWritten;
     bytesRemaining -= bytesWritten;
