@@ -5,14 +5,37 @@
 //  Appearance and information about the app.
 //
 
+import ServiceManagement
 import SwiftUI
 
 struct SettingsTab: View {
     @Environment(BridgeModel.self) private var model
+    @State private var startsAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var loginError: String? = nil
+
+    /// Asks macOS to open (or stop opening) SurroundBridge when you log in.
+    private func setStartsAtLogin(_ enabled: Bool) {
+        do {
+            if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            loginError = nil
+        } catch {
+            loginError = "macOS did not accept the change: \(error.localizedDescription) Make sure SurroundBridge is in the Applications folder, then try again."
+        }
+        startsAtLogin = SMAppService.mainApp.status == .enabled
+    }
 
     var body: some View {
         let store = ThemeStore.shared
         VStack(spacing: 12) {
+            Card(title: "General") {
+                Toggle("Start SurroundBridge when I log in", isOn: Binding(get: { startsAtLogin }, set: setStartsAtLogin))
+                if let loginError {
+                    Text(loginError).font(.caption).foregroundStyle(Theme.alert)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Hint("It starts quietly in the menu bar and reconnects to the output you used last. You can also manage this in System Settings under General, Login Items.")
+            }
+
             Card(title: "Appearance") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
                     ForEach(AppTheme.allCases) { theme in

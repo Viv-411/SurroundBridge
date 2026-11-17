@@ -29,27 +29,55 @@ normal audio you get loud static.
 - Test signal on one speaker at a time, or walking around the room
 - Live level meters, presets you can save and load, menu bar control
 
+![The Speakers screen: room picture, per-speaker controls and the equaliser](docs/screenshot-speakers.png)
+
 ## Requirements
-macOS 14.2 or later, Apple Silicon, Xcode, and an output device that accepts an AC-3 stream.
-Run `swift scripts/list-audio-formats.swift` and look for `cac3` under your device.
+- macOS 14.2 or later on an Apple Silicon Mac
+- [Xcode](https://apps.apple.com/app/xcode/id497799835) (free), opened at least once
+- An output device that accepts a Dolby Digital (AC-3) stream, such as a TV or receiver on HDMI or
+  optical. To check, run `swift scripts/list-audio-formats.swift` and look for `cac3` under your device.
 
-## Building
+## Install
+There is no ready-made download yet: an app that installs an audio device has to be signed with a
+paid Apple Developer ID before macOS lets other people open it. Until then, you build it yourself,
+which one script does for you:
+
 ```sh
-# 1. FFmpeg 4.4.x (the series the encoder code is written against)
-git clone --depth 1 --branch n4.4.8 https://git.ffmpeg.org/ffmpeg.git deps/ffmpeg-src
-(cd deps/ffmpeg-src && FFMPEG_HOME="$PWD/../ffmpeg" ../../scripts/build-ffmpeg.sh)
-
-# 2. the driver and the app (signed with your "Apple Development" certificate)
-scripts/build.sh
-
-# 3. install the virtual audio device, then restart Core Audio
-sudo cp -R build/Release/SoundPusherAudio.driver /Library/Audio/Plug-Ins/HAL/
-sudo killall coreaudiod
-
-# 4. run
-open build/Release/SurroundBridge.app
+git clone https://github.com/Viv-411/SurroundBridge.git
+cd SurroundBridge
+scripts/install.sh
 ```
-Unit tests for the audio maths: `cd Core && swift test`
+
+The script builds FFmpeg and the app, copies SurroundBridge to `/Applications`, and installs the
+virtual 5.1 audio device (it asks for your password once, and sound cuts out for a second).
+Run it again after `git pull` to update. `scripts/uninstall.sh` removes everything.
+
+## First run
+1. **Turn your speaker volume down.**
+2. Open SurroundBridge from Applications. Allow the two permission requests (system audio and
+   "microphone", which is how macOS labels reading from the virtual device; your real microphone
+   is not used).
+3. Click **Not connected. Choose an output** and pick `SoundPusher Audio → <your TV or receiver>`.
+4. Play something and press **Test all**: the noise should walk around your speakers.
+5. In the Room tab, enter your room size, arrange the speakers, and drag "You" to your seat.
+
+Settings has a **Start SurroundBridge when I log in** switch.
+
+![The Room screen: distances, volume changes and delays for the current seat](docs/screenshot-room.png)
+
+## Good to know
+- **Delay:** expect roughly a quarter of a second between the Mac and the speakers. Dolby Digital
+  encoding, the TV and the receiver all add to it. Fine for music; video players may need their
+  audio-delay setting; not great for games.
+- **Stereo sources** (most music) only contain left and right. Use a sound mode such as All Channel
+  Stereo to fill the room, and bass management to feed the subwoofer.
+- If you have no Apple Development certificate, the build is "ad-hoc" signed and macOS asks for the
+  audio permissions again after each rebuild. This path has had less testing.
+
+## For developers
+- Build only: `scripts/build.sh` (output in `build/Release`)
+- Unit tests for the audio maths: `cd Core && swift test`
+- Regenerate the icons: `swift scripts/make-icons.swift`
 
 ## Layout of this repository
 | Folder | What it is |
